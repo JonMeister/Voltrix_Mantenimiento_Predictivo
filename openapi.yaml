@@ -1,0 +1,915 @@
+# =============================================================================
+# CONTRATO OPENAPI · Voltrix Energy (Infraestructuras Paralelas y Distribuidas)
+# Servicio: Mantenimiento Predictivo (Equipo 6)
+# Basado en la plantilla común de Voltrix Energy (mantenida por Equipo 1).
+# Servido en GET /openapi.yaml y registrado en la hoja Coordinacion_Voltrix.
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: Voltrix Energy · Mantenimiento Predictivo
+  version: 1.0.0
+  description: |
+    Contrato HTTP del servicio **Mantenimiento Predictivo** (Equipo 6).
+
+    Genera y gestiona órdenes de mantenimiento programado y predictivo para los activos físicos
+    (paneles solares, turbinas eólicas y bancos de baterías) de las microplantas de Voltrix Energy,
+    a partir del estado operativo de los activos, las alertas activas, el histórico de generación y
+    el pronóstico de generación.
+
+    **Técnica de paralelismo exigida:** Procesamiento paralelo por lotes de activos (descomposición
+    de datos) para evaluar de forma concurrente el riesgo de falla de cada activo y generar las
+    órdenes de mantenimiento correspondientes.
+
+    **Servicios que consume:**
+    - **Equipo 1 – Inventario de Activos:** catálogo de activos por planta y su estado operativo vigente.
+    - **Equipo 3 – Alertas y Notificaciones:** alertas activas y condiciones críticas/urgentes por planta y activo.
+    - **Equipo 4 – Reportes de Generación:** agregados históricos de energía generada por planta, activo y periodo.
+    - **Equipo 5 – Pronóstico de Generación:** proyección de generación esperada por planta.
+
+    **Consumidores previstos**
+
+    | Equipo | Servicio | Operaciones que usa |
+    |---|---|---|
+    | 7 | Facturación y Liquidación | `GET /mantenimiento/ordenes`, `GET /mantenimiento/ordenes/{id}` |
+
+    **Convenciones comunes a todos los equipos**
+
+    - Fechas en RFC 3339 **con zona horaria** (`2026-11-19T14:00:00Z`).
+    - Identificadores de plantas y activos según Inventario (Equipo 1): `PL-001`, `PL-001-PS-07`.
+    - Cada consumidor envía `X-Equipo-Consumidor: equipo-<N>`; toda respuesta incluye `X-Request-Id`.
+      Ambos se escriben en los logs como evidencia de consumo real.
+    - Errores con el esquema común `Error` (`codigo`, `mensaje`, `requestId`, `detalles`).
+    - `429` con `Retry-After` ante sobrecarga, `503` si la base de datos no responde y `502` si un
+      servicio de otro equipo del que se depende falla.
+    - `GET /health` y `GET /openapi.yaml` existen en todos los servicios.
+    - Las operaciones de procesamiento intensivo aceptan `modo` (`secuencial` | `paralelo`) y
+      `workers`, y devuelven `MetricasProcesamiento` para comparar ambas versiones.
+  contact:
+    name: Equipo 6 · Mantenimiento Predictivo (Contacto - Jonathan Aristizábal, Tel. 3114322544)
+
+servers:                                                  # COMÚN
+  - url: http://{host}:{puerto}
+    description: Despliegue del Componente B (EC2) o entorno local. La dirección vigente está en la hoja Coordinacion_Voltrix.
+    variables:
+      host:
+        default: localhost
+        description: IP pública o DNS de la instancia EC2.
+      puerto:
+        default: "8080"
+
+tags:
+  - name: Mantenimiento
+    description: Consulta y gestión del ciclo de vida de las órdenes de mantenimiento predictivo.
+  - name: Procesamiento
+    description: Operación intensiva con la técnica de paralelismo o concurrencia exigida al equipo (procesamiento paralelo por lotes de activos).
+  - name: Operación
+    description: Salud del servicio y publicación del contrato.
+
+paths:
+  /mantenimiento/ordenes:
+    get:
+      tags: [Mantenimiento]
+      operationId: listarOrdenesMantenimiento
+      summary: Listar órdenes de mantenimiento con filtros y paginación
+      description: |
+        Devuelve una página de órdenes de mantenimiento filtrable por planta, activo, estado,
+        prioridad, tipo de mantenimiento y rango de fechas (`desde` y `hasta`).
+
+        Diseñado para soportar tanto la consulta operativa como el consumo por parte del
+        **Equipo 7 (Facturación y Liquidación)** para consolidar costos de mantenimiento por
+        planta y periodo de liquidación.
+      parameters:
+        - $ref: '#/components/parameters/EquipoConsumidor'
+        - name: plantaId
+          in: query
+          required: false
+          description: Filtrar órdenes pertenecientes a una microplanta específica.
+          schema:
+            $ref: '#/components/schemas/Identificador'
+        - name: activoId
+          in: query
+          required: false
+          description: Filtrar órdenes asociadas a un activo físico específico.
+          schema:
+            $ref: '#/components/schemas/Identificador'
+        - name: estado
+          in: query
+          required: false
+          description: Filtrar por estado actual de la orden.
+          schema:
+            $ref: '#/components/schemas/EstadoOrden'
+        - name: prioridad
+          in: query
+          required: false
+          description: Filtrar por nivel de prioridad de la orden.
+          schema:
+            $ref: '#/components/schemas/PrioridadOrden'
+        - name: tipoMantenimiento
+          in: query
+          required: false
+          description: Filtrar por tipo de mantenimiento.
+          schema:
+            $ref: '#/components/schemas/TipoMantenimiento'
+        - name: desde
+          in: query
+          required: false
+          description: Fecha y hora inicial (RFC 3339 con zona horaria) para filtrar por `generadoEn`.
+          schema:
+            type: string
+            format: date-time
+          example: '2026-11-01T00:00:00-05:00'
+        - name: hasta
+          in: query
+          required: false
+          description: Fecha y hora final (RFC 3339 con zona horaria) para filtrar por `generadoEn`.
+          schema:
+            type: string
+            format: date-time
+          example: '2026-11-30T23:59:59-05:00'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Página de órdenes de mantenimiento.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/X-Request-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaOrdenesMantenimiento'
+              example:
+                datos:
+                  - id: OM-20261119-001
+                    plantaId: PL-001
+                    activoId: PL-001-PS-07
+                    tipoActivo: panel_solar
+                    tipoMantenimiento: predictivo
+                    prioridad: alta
+                    estado: programada
+                    puntajeRiesgo: 78.5
+                    motivo: Caída sostenida de generación (-24.3%) y 2 alertas críticas activas.
+                    costoEstimado: 450000
+                    moneda: COP
+                    fechaProgramada: '2026-11-22T09:00:00-05:00'
+                    generadoEn: '2026-11-19T14:00:00Z'
+                    factoresEvaluados:
+                      estadoActivo: degradado
+                      alertasActivas: 3
+                      alertasCriticas: 2
+                      eficienciaHistoricaPct: 75.7
+                      desviacionPronosticoPct: -18.2
+                total: 1
+                costoTotalEstimado: 450000
+                limit: 50
+                offset: 0
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '429':
+          $ref: '#/components/responses/Sobrecarga'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  /mantenimiento/ordenes/{id}:
+    get:
+      tags: [Mantenimiento]
+      operationId: consultarOrdenMantenimiento
+      summary: Consultar una orden de mantenimiento por identificador
+      parameters:
+        - $ref: '#/components/parameters/OrdenId'
+        - $ref: '#/components/parameters/EquipoConsumidor'
+      responses:
+        '200':
+          description: Orden de mantenimiento encontrada.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/X-Request-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdenMantenimiento'
+              examples:
+                ejemplo:
+                  $ref: '#/components/examples/OrdenMantenimientoEjemplo'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/Sobrecarga'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+    patch:
+      tags: [Mantenimiento]
+      operationId: actualizarOrdenMantenimiento
+      summary: Actualizar el estado o programación de una orden de mantenimiento
+      description: |
+        Permite actualizar el estado operativo de una orden (`programada` → `en_progreso` →
+        `completada` o `cancelada`), ajustar la fecha programada o actualizar el costo estimado
+        tras la inspección técnica. Devuelve `409` si la orden se encuentra en un estado terminal
+        (`completada` o `cancelada`) y no admite la transición solicitada.
+      parameters:
+        - $ref: '#/components/parameters/OrdenId'
+        - $ref: '#/components/parameters/EquipoConsumidor'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudActualizacionOrden'
+            example:
+              estado: completada
+              costoEstimado: 480000
+              observaciones: Se reemplazó inversor secundario y se limpió arreglo fotovoltaico.
+      responses:
+        '200':
+          description: Orden de mantenimiento actualizada.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/X-Request-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdenMantenimiento'
+              example:
+                id: OM-20261119-001
+                plantaId: PL-001
+                activoId: PL-001-PS-07
+                tipoActivo: panel_solar
+                tipoMantenimiento: predictivo
+                prioridad: alta
+                estado: completada
+                puntajeRiesgo: 78.5
+                motivo: Caída sostenida de generación (-24.3%) y 2 alertas críticas activas.
+                costoEstimado: 480000
+                moneda: COP
+                fechaProgramada: '2026-11-22T09:00:00-05:00'
+                generadoEn: '2026-11-19T14:00:00Z'
+                actualizadoEn: '2026-11-22T15:30:00Z'
+                observaciones: Se reemplazó inversor secundario y se limpió arreglo fotovoltaico.
+                factoresEvaluados:
+                  estadoActivo: degradado
+                  alertasActivas: 3
+                  alertasCriticas: 2
+                  eficienciaHistoricaPct: 75.7
+                  desviacionPronosticoPct: -18.2
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '429':
+          $ref: '#/components/responses/Sobrecarga'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  /mantenimiento/generar:
+    post:
+      tags: [Procesamiento]
+      operationId: generarOrdenesMantenimiento
+      summary: Evaluar lotes de activos y generar órdenes de mantenimiento predictivo
+      description: |
+        Ejecuta el procesamiento intensivo del servicio de Mantenimiento Predictivo:
+
+        1. **Recolección de insumos:** consulta los servicios configurados de Inventario de Activos
+           (Equipo 1), Alertas y Notificaciones (Equipo 3), Reportes de Generación (Equipo 4) y
+           Pronóstico de Generación (Equipo 5) para las plantas o activos solicitados en el rango
+           `[desde, hasta]`.
+        2. **Descomposición de datos por lotes de activos:** particiona el conjunto de activos
+           recolectados en lotes independientes (tamaño `tamanoLote` o partición equilibrada según
+           `workers`). Cada worker evalúa en paralelo el estado operativo, el conteo y severidad de
+           alertas, la tendencia/eficiencia histórica y la desviación respecto al pronóstico para
+           calcular el puntaje de riesgo (`0..100`), clasificar prioridad/tipo y estimar el costo.
+        3. **Modos de ejecución:** con `modo=secuencial` se evalúan todos los activos en un único
+           hilo de ejecución (línea base, `workers=1`); con `modo=paralelo` se aplica el
+           procesamiento paralelo por lotes usando `workers` trabajadores concurrentes.
+        4. **Persistencia y métricas:** guarda en base de datos las órdenes cuyo puntaje supere
+           `umbralRiesgo` y retorna `MetricasProcesamiento` con el tiempo exacto de evaluación
+           (`duracionMs`) y el número de activos evaluados (`elementos`) para benchmarking reproducible.
+      parameters:
+        - $ref: '#/components/parameters/EquipoConsumidor'
+        - $ref: '#/components/parameters/Modo'
+        - $ref: '#/components/parameters/Workers'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudGeneracionOrdenes'
+            example:
+              plantaIds: [PL-001, PL-002]
+              desde: '2026-11-01T00:00:00-05:00'
+              hasta: '2026-11-18T23:59:59-05:00'
+              umbralRiesgo: 50
+              tamanoLote: 25
+      responses:
+        '200':
+          description: Evaluación completada y órdenes generadas.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/X-Request-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoGeneracionOrdenes'
+              example:
+                loteId: 7b4e1c9d-2f5a-4d8e-a1b3-6c9d0e2f4a8b
+                activosEvaluados: 120
+                generados: 2
+                costoTotalEstimado: 1300000
+                resumenPorPrioridad:
+                  baja: 0
+                  media: 0
+                  alta: 1
+                  critica: 1
+                ordenes:
+                  - id: OM-20261119-001
+                    plantaId: PL-001
+                    activoId: PL-001-PS-07
+                    tipoActivo: panel_solar
+                    tipoMantenimiento: predictivo
+                    prioridad: alta
+                    estado: programada
+                    puntajeRiesgo: 78.5
+                    motivo: Caída sostenida de generación (-24.3%) y 2 alertas críticas activas.
+                    costoEstimado: 450000
+                    moneda: COP
+                    fechaProgramada: '2026-11-22T09:00:00-05:00'
+                    generadoEn: '2026-11-19T14:00:00Z'
+                    factoresEvaluados:
+                      estadoActivo: degradado
+                      alertasActivas: 3
+                      alertasCriticas: 2
+                      eficienciaHistoricaPct: 75.7
+                      desviacionPronosticoPct: -18.2
+                  - id: OM-20261119-002
+                    plantaId: PL-002
+                    activoId: PL-002-BB-01
+                    tipoActivo: banco_baterias
+                    tipoMantenimiento: correctivo
+                    prioridad: critica
+                    estado: programada
+                    puntajeRiesgo: 92.0
+                    motivo: Sobrecalentamiento recurrente en banco de baterías y estado en falla.
+                    costoEstimado: 850000
+                    moneda: COP
+                    fechaProgramada: '2026-11-20T08:00:00-05:00'
+                    generadoEn: '2026-11-19T14:00:00Z'
+                    factoresEvaluados:
+                      estadoActivo: falla
+                      alertasActivas: 5
+                      alertasCriticas: 4
+                      eficienciaHistoricaPct: 58.0
+                      desviacionPronosticoPct: -31.5
+                metricas:
+                  modo: paralelo
+                  workers: 4
+                  elementos: 120
+                  duracionMs: 42
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '429':
+          $ref: '#/components/responses/Sobrecarga'
+        '502':
+          $ref: '#/components/responses/DependenciaFallida'
+        '503':
+          $ref: '#/components/responses/NoDisponible'
+
+  # --------------------------- COMÚN: no modificar ---------------------------
+  /health:
+    get:
+      tags: [Operación]
+      operationId: consultarSalud
+      summary: Comprobar la disponibilidad del servicio y de su base de datos
+      description: No exige `X-Equipo-Consumidor`. Debe responder rápido y sin llamar a otros equipos de forma bloqueante.
+      responses:
+        '200':
+          description: Servicio disponible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+              example:
+                estado: disponible
+                baseDatos: ok
+                version: 1.0.0
+                tiempoActivoSeg: 3600
+        '503':
+          description: El servicio no puede acceder a su base de datos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+              example:
+                estado: no_disponible
+                baseDatos: error
+                version: 1.0.0
+                tiempoActivoSeg: 3600
+
+  /openapi.yaml:
+    get:
+      tags: [Operación]
+      operationId: obtenerContrato
+      summary: Descargar este contrato
+      description: URL que se registra en la columna "URL del contrato OpenAPI" de la hoja Coordinacion_Voltrix.
+      responses:
+        '200':
+          description: Contrato en formato YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+components:
+  parameters:
+    # COMÚN
+    EquipoConsumidor:
+      name: X-Equipo-Consumidor
+      in: header
+      required: false
+      description: Equipo que hace la llamada. Se registra en los logs como evidencia de consumo entre células.
+      schema:
+        type: string
+        pattern: '^equipo-[1-7]$'
+        example: equipo-7
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Tamaño de página.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Número de elementos a omitir.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Modo:
+      name: modo
+      in: query
+      required: false
+      description: Versión del procesamiento a ejecutar (línea base o técnica paralela/concurrente).
+      schema:
+        type: string
+        enum: [secuencial, paralelo]
+        default: paralelo
+    Workers:
+      name: workers
+      in: query
+      required: false
+      description: Número de hilos, goroutines, procesos o workers a usar en modo paralelo. Por defecto lo decide el servicio.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 64
+    OrdenId:
+      name: id
+      in: path
+      required: true
+      description: Identificador único de la orden de mantenimiento.
+      schema:
+        $ref: '#/components/schemas/Identificador'
+      example: OM-20261119-001
+
+  headers:
+    # COMÚN
+    X-Request-Id:
+      description: Identificador de la petición, presente también en los logs del servicio.
+      schema:
+        type: string
+        format: uuid
+    Retry-After:
+      description: Segundos que el consumidor debe esperar antes de reintentar.
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+
+  responses:
+    # COMÚN
+    SolicitudInvalida:
+      description: La solicitud no cumple el contrato.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/X-Request-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SOLICITUD_INVALIDA
+            mensaje: La solicitud no cumple el contrato.
+            requestId: 0a4e9c1d-3f2b-4e8a-b7c6-5d1e2f3a4b5c
+            detalles:
+              - campo: desde
+                problema: debe ser una fecha RFC 3339 con zona horaria
+    NoEncontrado:
+      description: La orden de mantenimiento no existe.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/X-Request-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_ENCONTRADO
+            mensaje: La orden de mantenimiento OM-999 no existe.
+            requestId: 9c2f7e4a-1d3b-4a6c-8e5f-0b7d9a1c3e2f
+    Conflicto:
+      description: Ya existe una orden con ese identificador o el estado actual impide la operación.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/X-Request-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: TRANSICION_INVALIDA
+            mensaje: La orden OM-20261119-001 ya está completada y no admite cambios de estado.
+            requestId: 4d8b2a6e-7c1f-4e3a-9b5d-2f6a8c0e1b4d
+    Sobrecarga:
+      description: Capacidad de admisión agotada. Reintentar después de `Retry-After` segundos.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+        X-Request-Id:
+          $ref: '#/components/headers/X-Request-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SOBRECARGA
+            mensaje: El servicio está atendiendo el máximo de peticiones simultáneas.
+            requestId: 2e7a4c9b-6d1f-4b8e-a3c5-7f0d2b9e4a1c
+    NoDisponible:
+      description: Base de datos o servicio no disponible.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/X-Request-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_DISPONIBLE
+            mensaje: No hay conexión con la base de datos.
+            requestId: 8f1b3d5a-2c7e-4f9a-b6d0-1e4c7a9b2d5f
+    DependenciaFallida:
+      description: Un servicio de otro equipo del que se depende no respondió o respondió con error.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/X-Request-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: DEPENDENCIA_FALLIDA
+            mensaje: Inventario de Activos respondió 503.
+            requestId: 3c6e9f2a-8b1d-4e7c-a5f0-6d2b9e1c4a7f
+            detalles:
+              - campo: equipo-1
+                problema: GET /activos?plantaId=PL-001 respondió 503
+
+  examples:
+    OrdenMantenimientoEjemplo:
+      summary: Orden de mantenimiento predictivo generada para un panel solar
+      value:
+        id: OM-20261119-001
+        plantaId: PL-001
+        activoId: PL-001-PS-07
+        tipoActivo: panel_solar
+        tipoMantenimiento: predictivo
+        prioridad: alta
+        estado: programada
+        puntajeRiesgo: 78.5
+        motivo: Caída sostenida de generación (-24.3%) y 2 alertas críticas activas.
+        costoEstimado: 450000
+        moneda: COP
+        fechaProgramada: '2026-11-22T09:00:00-05:00'
+        generadoEn: '2026-11-19T14:00:00Z'
+        factoresEvaluados:
+          estadoActivo: degradado
+          alertasActivas: 3
+          alertasCriticas: 2
+          eficienciaHistoricaPct: 75.7
+          desviacionPronosticoPct: -18.2
+
+  schemas:
+    # ------------------------------- COMÚN -------------------------------
+    Identificador:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[A-Za-z0-9_-]+$'
+      example: PL-001-PS-07
+    Error:
+      type: object
+      additionalProperties: false
+      required: [codigo, mensaje, requestId]
+      properties:
+        codigo:
+          type: string
+          pattern: '^[A-Z_]+$'
+          description: |
+            Código estable en MAYÚSCULAS. Comunes: SOLICITUD_INVALIDA, NO_ENCONTRADO, DUPLICADO,
+            SOBRECARGA, NO_DISPONIBLE, DEPENDENCIA_FALLIDA, ERROR_INTERNO.
+            Específicos de Mantenimiento Predictivo: TRANSICION_INVALIDA, RANGO_FECHAS_INVALIDO.
+          example: NO_ENCONTRADO
+        mensaje:
+          type: string
+        requestId:
+          type: string
+        detalles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [campo, problema]
+            properties:
+              campo:
+                type: string
+              problema:
+                type: string
+    Salud:
+      type: object
+      additionalProperties: false
+      required: [estado, baseDatos]
+      properties:
+        estado:
+          type: string
+          enum: [disponible, no_disponible]
+        baseDatos:
+          type: string
+          enum: [ok, error]
+        version:
+          type: string
+        tiempoActivoSeg:
+          type: integer
+          minimum: 0
+    MetricasProcesamiento:
+      type: object
+      additionalProperties: false
+      required: [modo, workers, elementos, duracionMs]
+      description: Evidencia de cada ejecución intensiva, útil para el benchmark secuencial contra paralelo.
+      properties:
+        modo:
+          type: string
+          enum: [secuencial, paralelo]
+        workers:
+          type: integer
+          minimum: 1
+        elementos:
+          type: integer
+          minimum: 0
+          description: Cantidad de activos evaluados en el lote de mantenimiento predictivo.
+        duracionMs:
+          type: integer
+          minimum: 0
+
+    # ------------------ Propios de Mantenimiento Predictivo ------------------
+    TipoActivo:
+      type: string
+      enum: [panel_solar, turbina_eolica, banco_baterias]
+      description: Categoría física del activo evaluado según el catálogo de Inventario de Activos.
+    TipoMantenimiento:
+      type: string
+      enum: [preventivo, predictivo, correctivo]
+      description: Naturaleza de la intervención recomendada según el nivel de riesgo y el estado del activo.
+    PrioridadOrden:
+      type: string
+      enum: [baja, media, alta, critica]
+      description: Nivel de urgencia asignado a la orden a partir del puntaje de riesgo calculado.
+    EstadoOrden:
+      type: string
+      enum: [programada, en_progreso, completada, cancelada]
+      description: Estado actual en el ciclo de vida de la orden de mantenimiento.
+    FactoresEvaluados:
+      type: object
+      additionalProperties: false
+      required: [estadoActivo, alertasActivas, alertasCriticas, eficienciaHistoricaPct, desviacionPronosticoPct]
+      description: Resumen trazable de las señales provenientes de Equipos 1, 3, 4 y 5 que motivaron la orden.
+      properties:
+        estadoActivo:
+          type: string
+          description: Estado operativo reportado por Inventario de Activos (Equipo 1).
+          example: degradado
+        alertasActivas:
+          type: integer
+          minimum: 0
+          description: Total de alertas activas registradas por Alertas y Notificaciones (Equipo 3).
+        alertasCriticas:
+          type: integer
+          minimum: 0
+          description: Número de alertas con severidad crítica o urgente.
+        eficienciaHistoricaPct:
+          type: number
+          minimum: 0
+          maximum: 200
+          description: Porcentaje de eficiencia observada en Reportes de Generación (Equipo 4).
+        desviacionPronosticoPct:
+          type: number
+          description: Desviación porcentual esperada frente al Pronóstico de Generación (Equipo 5). Negativo indica caída proyectada.
+    OrdenMantenimiento:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - plantaId
+        - activoId
+        - tipoActivo
+        - tipoMantenimiento
+        - prioridad
+        - estado
+        - puntajeRiesgo
+        - motivo
+        - costoEstimado
+        - moneda
+        - fechaProgramada
+        - generadoEn
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        plantaId:
+          $ref: '#/components/schemas/Identificador'
+        activoId:
+          $ref: '#/components/schemas/Identificador'
+        tipoActivo:
+          $ref: '#/components/schemas/TipoActivo'
+        tipoMantenimiento:
+          $ref: '#/components/schemas/TipoMantenimiento'
+        prioridad:
+          $ref: '#/components/schemas/PrioridadOrden'
+        estado:
+          $ref: '#/components/schemas/EstadoOrden'
+        puntajeRiesgo:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Índice compuesto de riesgo (0 a 100) calculado durante la evaluación del activo.
+        motivo:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Explicación legible de las condiciones que dispararon la orden.
+        costoEstimado:
+          type: number
+          minimum: 0
+          description: Costo estimado de la intervención en COP, consumido por Facturación y Liquidación (Equipo 7).
+        moneda:
+          type: string
+          enum: [COP]
+          default: COP
+        fechaProgramada:
+          type: string
+          format: date-time
+          description: Fecha y hora sugerida o agendada para ejecutar el mantenimiento (RFC 3339 con zona horaria).
+        generadoEn:
+          type: string
+          format: date-time
+          description: Fecha y hora de creación de la orden (RFC 3339 con zona horaria).
+        actualizadoEn:
+          type: string
+          format: date-time
+          description: Fecha y hora de la última actualización de la orden (RFC 3339 con zona horaria).
+        observaciones:
+          type: string
+          maxLength: 500
+          description: Notas técnicas opcionales registradas durante la ejecución o cierre.
+        factoresEvaluados:
+          $ref: '#/components/schemas/FactoresEvaluados'
+    PaginaOrdenesMantenimiento:
+      type: object
+      additionalProperties: false
+      required: [datos, total, costoTotalEstimado, limit, offset]
+      properties:
+        datos:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrdenMantenimiento'
+        total:
+          type: integer
+          minimum: 0
+          description: Número total de órdenes que cumplen los filtros aplicados.
+        costoTotalEstimado:
+          type: number
+          minimum: 0
+          description: Suma de `costoEstimado` (en COP) de todas las órdenes que cumplen los filtros aplicados.
+        limit:
+          type: integer
+        offset:
+          type: integer
+    SolicitudActualizacionOrden:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoOrden'
+        fechaProgramada:
+          type: string
+          format: date-time
+        costoEstimado:
+          type: number
+          minimum: 0
+        observaciones:
+          type: string
+          maxLength: 500
+    SolicitudGeneracionOrdenes:
+      type: object
+      additionalProperties: false
+      required: [desde, hasta]
+      properties:
+        plantaIds:
+          type: array
+          description: Lista de microplantas a evaluar. Si se omite junto con `activoIds`, se evalúan todas las plantas activas de Inventario.
+          items:
+            $ref: '#/components/schemas/Identificador'
+        activoIds:
+          type: array
+          description: Lista opcional de activos específicos a evaluar. Si se especifica, restringe la evaluación a estos activos.
+          items:
+            $ref: '#/components/schemas/Identificador'
+        desde:
+          type: string
+          format: date-time
+          description: Inicio de la ventana histórica de análisis (RFC 3339 con zona horaria).
+        hasta:
+          type: string
+          format: date-time
+          description: Fin de la ventana histórica de análisis (RFC 3339 con zona horaria). Debe ser posterior a `desde`.
+        umbralRiesgo:
+          type: number
+          minimum: 0
+          maximum: 100
+          default: 50
+          description: Puntaje mínimo de riesgo (0 a 100) a partir del cual se genera una orden de mantenimiento.
+        tamanoLote:
+          type: integer
+          minimum: 1
+          maximum: 500
+          description: Tamaño de cada sublote de activos asignado a los workers en modo paralelo. Si se omite, el servicio particiona equitativamente según `workers`.
+    ResumenPorPrioridad:
+      type: object
+      additionalProperties: false
+      required: [baja, media, alta, critica]
+      properties:
+        baja:
+          type: integer
+          minimum: 0
+        media:
+          type: integer
+          minimum: 0
+        alta:
+          type: integer
+          minimum: 0
+        critica:
+          type: integer
+          minimum: 0
+    ResultadoGeneracionOrdenes:
+      type: object
+      additionalProperties: false
+      required:
+        - loteId
+        - activosEvaluados
+        - generados
+        - costoTotalEstimado
+        - resumenPorPrioridad
+        - ordenes
+        - metricas
+      properties:
+        loteId:
+          type: string
+          format: uuid
+          description: Identificador único del lote de evaluación ejecutado.
+        activosEvaluados:
+          type: integer
+          minimum: 0
+          description: Total de activos analizados en esta ejecución.
+        generados:
+          type: integer
+          minimum: 0
+          description: Total de órdenes de mantenimiento generadas y persistidas.
+        costoTotalEstimado:
+          type: number
+          minimum: 0
+          description: Suma de costos estimados (en COP) de las órdenes generadas en el lote.
+        resumenPorPrioridad:
+          $ref: '#/components/schemas/ResumenPorPrioridad'
+        ordenes:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrdenMantenimiento'
+        metricas:
+          $ref: '#/components/schemas/MetricasProcesamiento'
+
