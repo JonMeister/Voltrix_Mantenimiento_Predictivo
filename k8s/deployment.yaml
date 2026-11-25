@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mantenimiento-api
+  labels:
+    app: voltrix-mantenimiento
+    equipo: equipo-6
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: voltrix-mantenimiento
+  template:
+    metadata:
+      labels:
+        app: voltrix-mantenimiento
+        equipo: equipo-6
+    spec:
+      containers:
+        - name: api
+          image: voltrix-mantenimiento-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: mantenimiento-config
+            - secretRef:
+                name: mantenimiento-secret
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "192Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+

@@ -1,0 +1,23 @@
+# Copiar a terraform.tfvars (ignorado por .gitignore) y llenar valores reales.
+# NUNCA subir terraform.tfvars al repositorio Git.
+
+aws_region        = "us-east-1"
+instance_type     = "t3.micro"
+key_pair_name     = "REEMPLAZAR_CON_TU_KEY_PAIR_AWS"
+ssh_allowed_cidr  = "0.0.0.0/0"
+repo_url          = "https://github.com/JonMeister/Voltrix_Mantenimiento_Predictivo.git"
+repo_branch       = "main"
+api_port          = 8080
+
+postgres_db       = "voltrix_mantenimiento"
+postgres_user     = "voltrix_user"
+postgres_password = "REEMPLAZAR_CON_PASSWORD_SEGURO"
+
+# "mock" para Avance 1 (esqueleto con datos de ejemplo)
+# "http" para Avance 2 / Entrega Final (consumo real contra otras células)
+data_source       = "mock"
+url_inventario    = ""
+url_alertas       = ""
+url_reportes      = ""
+url_pronosticos   = ""
+

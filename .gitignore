@@ -1,0 +1,71 @@
+# =============================================================================
+# .gitignore — Voltrix Energy · Equipo 6 (Mantenimiento Predictivo)
+# Seguridad: NUNCA subir secretos, llaves privadas, .env ni estados de Terraform
+# =============================================================================
+
+# Variables de entorno y secretos locales
+.env
+.env.*
+!.env.example
+k8s/secret.yaml
+k8s/*.secret.yaml
+!k8s/secret.example.yaml
+
+# Credenciales, llaves SSH y certificados
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+aws_credentials*
+credentials.json
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+
+# Terraform (estados pueden contener secretos y credenciales)
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Go binarios, cobertura y cachés
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.html
+mantenimiento-api
+
+# Logs y datos locales temporales
+*.log
+tmp/
+data/
+pgdata/
+
+# Editores y sistema operativo
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+

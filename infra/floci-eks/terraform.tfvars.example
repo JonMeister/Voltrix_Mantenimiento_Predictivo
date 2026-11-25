@@ -1,0 +1,9 @@
+# Copiar a terraform.tfvars (ignorado por .gitignore)
+aws_region         = "us-east-1"
+floci_endpoint     = "http://localhost:4566"
+cluster_name       = "voltrix-mantenimiento-eks"
+kubernetes_version = "1.31"
+# Credenciales ficticias solo para emulación local en Floci
+floci_access_key   = "test"
+floci_secret_key   = "test"
+

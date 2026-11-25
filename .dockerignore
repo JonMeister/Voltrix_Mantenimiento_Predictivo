@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+infra
+k8s
+README.md
+*.md
+*.log
+tmp
+bin
+dist
+*.pem
+*.key
+*.tfstate*
+

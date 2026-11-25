@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mantenimiento-config
+  labels:
+    app: voltrix-mantenimiento
+    equipo: equipo-6
+data:
+  API_PORT: "8080"
+  SERVICE_VERSION: "1.0.0"
+  LOG_LEVEL: "info"
+  MAX_CONCURRENT_JOBS: "2"
+  DEFAULT_WORKERS: "2"
+  RETRY_AFTER_SECONDS: "2"
+  DATA_SOURCE: "mock"
+  UPSTREAM_TIMEOUT_SECONDS: "3"
+  SEED_DEMO_DATA: "true"
+  # Inyectar aquí las URLs vigentes de la hoja Coordinacion_Voltrix
+  URL_INVENTARIO: "http://inventario-svc:8080"
+  URL_ALERTAS: "http://alertas-svc:8080"
+  URL_REPORTES: "http://reportes-svc:8080"
+  URL_PRONOSTICOS: "http://pronosticos-svc:8000"
+  POSTGRES_DB: "voltrix_mantenimiento"
+  POSTGRES_USER: "voltrix_user"
+
