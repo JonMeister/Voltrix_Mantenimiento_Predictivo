@@ -16,7 +16,7 @@ import (
 const consumerHeaderValue = "equipo-6"
 
 // HTTPUpstreamClient implementa los adaptadores alineados a los contratos reales
-// de Equipo 1 (Inventario), Equipo 3 (Alertas - supuesto estándar), Equipo 4 (Reportes)
+// de Equipo 1 (Inventario), Equipo 3 (Alertas y Notificaciones), Equipo 4 (Reportes)
 // y Equipo 5 (Pronóstico).
 type HTTPUpstreamClient struct {
 	httpClient     *http.Client
@@ -152,23 +152,30 @@ func (c *HTTPUpstreamClient) ObtenerActivos(ctx context.Context, plantaIDs, acti
 	return result, nil
 }
 
-// --- Equipo 3: Alertas y Notificaciones (contrato supuesto compatible con plantilla común) ---
-// Soporta tanto listado paginado { datos: [...] } como agregado { resumenPorActivo: [...] }.
+// --- Equipo 3: Alertas y Notificaciones ---
+// Contrato real: GET /alertas/estado?plantaId=...&estado=activa&limit=200&offset=0 -> EstadoAlertas
+// resumenPorActivo (sin paginar, diseñado para Equipo 6): [{ plantaId, activoId, activas, criticas }]
+// datos (paginado): [{ id, plantaId, activoId, tipoActivo, metrica, valorObservado, umbralAplicado, severidad, estado, ocurrencias }]
+// Metrica real: temperatura | caida_potencia | velocidad_viento; Severidad real: advertencia | critica.
 
 type alertaItemDTO struct {
-	PlantaID  string `json:"plantaId"`
-	ActivoID  string `json:"activoId"`
-	Severidad string `json:"severidad"`
-	Estado    string `json:"estado"`
-	Condicion string `json:"condicion"`
-	Mensaje   string `json:"mensaje"`
+	ID             string  `json:"id"`
+	PlantaID       string  `json:"plantaId"`
+	ActivoID       string  `json:"activoId"`
+	TipoActivo     string  `json:"tipoActivo"`
+	Metrica        string  `json:"metrica"`
+	ValorObservado float64 `json:"valorObservado"`
+	UmbralAplicado float64 `json:"umbralAplicado"`
+	Severidad      string  `json:"severidad"`
+	Estado         string  `json:"estado"`
+	Ocurrencias    int     `json:"ocurrencias"`
 }
 
 type alertaResumenDTO struct {
-	ActivoID        string `json:"activoId"`
-	AlertasActivas  int    `json:"alertasActivas"`
-	AlertasCriticas int    `json:"alertasCriticas"`
-	UltimaCondicion string `json:"ultimaCondicion"`
+	PlantaID string `json:"plantaId"`
+	ActivoID string `json:"activoId"`
+	Activas  int    `json:"activas"`
+	Criticas int    `json:"criticas"`
 }
 
 type alertasRespDTO struct {
@@ -186,10 +193,12 @@ func (c *HTTPUpstreamClient) ObtenerAlertas(ctx context.Context, plantaIDs []str
 	if len(targets) == 0 {
 		targets = []string{""}
 	}
+	fromSummary := make(map[string]bool)
 	for _, pid := range targets {
 		q := url.Values{}
 		q.Set("estado", "activa")
 		q.Set("limit", "200")
+		q.Set("offset", "0")
 		if pid != "" {
 			q.Set("plantaId", pid)
 		}
@@ -198,15 +207,18 @@ func (c *HTTPUpstreamClient) ObtenerAlertas(ctx context.Context, plantaIDs []str
 		if err := c.doGet(ctx, "equipo-3", endpoint, &resp); err != nil {
 			return nil, err
 		}
+		// 1) Fuente autoritativa de conteos: resumenPorActivo (sin paginar en Equipo 3).
 		for _, r := range resp.ResumenPorActivo {
-			if r.ActivoID != "" {
-				out[r.ActivoID] = domain.ResumenAlertasActivo{
-					AlertasActivas:  r.AlertasActivas,
-					AlertasCriticas: r.AlertasCriticas,
-					UltimaCondicion: r.UltimaCondicion,
-				}
+			if r.ActivoID == "" {
+				continue
 			}
+			cur := out[r.ActivoID]
+			cur.AlertasActivas = r.Activas
+			cur.AlertasCriticas = r.Criticas
+			out[r.ActivoID] = cur
+			fromSummary[r.ActivoID] = true
 		}
+		// 2) Enriquecer UltimaCondicion con datos[].metrica sin duplicar conteos ya provistos por resumenPorActivo.
 		for _, a := range resp.Datos {
 			if a.Estado != "" && strings.ToLower(a.Estado) != "activa" {
 				continue
@@ -215,18 +227,18 @@ func (c *HTTPUpstreamClient) ObtenerAlertas(ctx context.Context, plantaIDs []str
 			if key == "" {
 				key = a.PlantaID
 			}
-			cur := out[key]
-			cur.AlertasActivas++
-			sev := strings.ToLower(a.Severidad)
-			if sev == "critica" || sev == "urgente" || sev == "alta" {
-				cur.AlertasCriticas++
+			if key == "" {
+				continue
 			}
-			if cur.UltimaCondicion == "" {
-				if a.Condicion != "" {
-					cur.UltimaCondicion = a.Condicion
-				} else {
-					cur.UltimaCondicion = a.Mensaje
+			cur := out[key]
+			if !fromSummary[key] {
+				cur.AlertasActivas++
+				if strings.ToLower(a.Severidad) == "critica" {
+					cur.AlertasCriticas++
 				}
+			}
+			if a.Metrica != "" && (cur.UltimaCondicion == "" || strings.ToLower(a.Severidad) == "critica") {
+				cur.UltimaCondicion = a.Metrica
 			}
 			out[key] = cur
 		}

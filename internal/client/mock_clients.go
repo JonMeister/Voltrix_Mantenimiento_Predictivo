@@ -57,9 +57,9 @@ func (m *MockUpstreamClient) ObtenerActivos(_ context.Context, plantaIDs, activo
 
 func (m *MockUpstreamClient) ObtenerAlertas(_ context.Context, _ []string) (map[string]domain.ResumenAlertasActivo, error) {
 	return map[string]domain.ResumenAlertasActivo{
-		"PL-001-PS-07": {AlertasActivas: 3, AlertasCriticas: 2, UltimaCondicion: "caida_generacion"},
-		"PL-002-BB-01": {AlertasActivas: 5, AlertasCriticas: 4, UltimaCondicion: "sobrecalentamiento_bateria"},
-		"PL-003-PS-04": {AlertasActivas: 2, AlertasCriticas: 1, UltimaCondicion: "inversor_degradado"},
+		"PL-001-PS-07": {AlertasActivas: 3, AlertasCriticas: 2, UltimaCondicion: "caida_potencia"},
+		"PL-002-BB-01": {AlertasActivas: 5, AlertasCriticas: 4, UltimaCondicion: "temperatura"},
+		"PL-003-PS-04": {AlertasActivas: 2, AlertasCriticas: 1, UltimaCondicion: "caida_potencia"},
 	}, nil
 }
 
