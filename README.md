@@ -48,14 +48,14 @@ docker compose up -d --build
 
 ```bash
 # Salud del servicio y PostgreSQL
-curl -s http://localhost:8080/health
+curl -s http://localhost:8086/health
 
 # Contrato OpenAPI
 curl -s http://localhost:8080/openapi.yaml | head -n 20
 
 # Listar órdenes de ejemplo (datos semilla compatibles con Equipo 7)
 curl -s -H "X-Equipo-Consumidor: equipo-7" \
-  "http://localhost:8080/mantenimiento/ordenes?plantaId=PL-001"
+  "http://localhost:8086/mantenimiento/ordenes?plantaId=PL-001"
 
 # Consultar una orden específica
 curl -s -H "X-Equipo-Consumidor: equipo-7" \

@@ -52,6 +52,7 @@ SEED_DEMO_DATA=true
 EOF
 chmod 600 .env
 
-# 4. Construir y levantar API + PostgreSQL en red privada
-docker compose up -d --build
+# 4. Descargar imagen desde Docker Hub y levantar API + PostgreSQL en red privada
+docker compose pull
+docker compose up -d
 
