@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euxo pipefail
 
-# 1. Habilitar 1 GiB de Swap persistente (obligatorio para EC2 de 1 GiB RAM)
+# 1. Habilitar 1 GiB de Swap persistente (respaldo de memoria en EC2 t3.small)
 if [ ! -f /swapfile ]; then
   fallocate -l 1G /swapfile
   chmod 600 /swapfile

@@ -5,9 +5,9 @@ variable "aws_region" {
 }
 
 variable "instance_type" {
-  description = "Tipo de instancia elegible según plan/fecha de cuenta AWS (1 GiB RAM: t3.micro o t2.micro)"
+  description = "Tipo de instancia EC2 (por defecto t3.small: 2 vCPU, 2 GiB RAM)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
 }
 
 variable "key_pair_name" {
