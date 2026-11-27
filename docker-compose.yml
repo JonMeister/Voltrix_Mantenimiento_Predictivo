@@ -1,5 +1,5 @@
 # =============================================================================
-# Docker Compose — Componente B (Despliegue Real en EC2 t3.small, 2 GiB RAM)
+# Docker Compose — Componente B (Despliegue Real en EC2 t3.micro, 1 GiB RAM)
 # Solo el puerto de la API se expone; PostgreSQL permanece aislado en red privada.
 # Presupuesto combinado: 192m (Go API) + 256m (PostgreSQL) = 448m (< 45% RAM).
 # =============================================================================

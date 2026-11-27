@@ -5,9 +5,9 @@ variable "aws_region" {
 }
 
 variable "instance_type" {
-  description = "Tipo de instancia EC2 (por defecto t3.small: 2 vCPU, 2 GiB RAM)"
+  description = "Tipo de instancia EC2 (por defecto t3.micro: 2 vCPU, 1 GiB RAM)"
   type        = string
-  default     = "t3.small"
+  default     = "t3.micro"
 }
 
 variable "key_pair_name" {

@@ -26,7 +26,7 @@ Voltrix_Mantenimiento/
 ├── k8s/                       # Manifiestos Kubernetes (ConfigMap, Secret, Postgres, Deployment, Service)
 ├── infra/
 │   ├── floci-eks/             # Terraform para clúster EKS en Floci
-│   └── ec2/                   # Terraform para AWS EC2 (t3.small, 2 GiB RAM + 1 GiB Swap)
+│   └── ec2/                   # Terraform para AWS EC2 (t3.micro, 1 GiB RAM + 1 GiB Swap)
 ├── Dockerfile                 # Multi-stage Go -> Alpine no-root
 ├── docker-compose.yml         # API + PostgreSQL en red privada (192m + 256m)
 ├── openapi.yaml               # Contrato oficial OpenAPI 3.0.3
